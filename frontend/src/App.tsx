@@ -18,14 +18,13 @@ const DEFAULT_CONFIG: ApiConfig = {
   maxTokens: 2048,
   maskingMode: "auto",
   restorePiiInResponse: false,
-  scoreThreshold: 0.4,
 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function loadConfig(): ApiConfig {
   try {
-    const raw = localStorage.getItem("privacyllm_v4");
+    const raw = localStorage.getItem("privacyllm_v5");
     if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
   } catch {}
   return DEFAULT_CONFIG;
@@ -33,7 +32,7 @@ function loadConfig(): ApiConfig {
 
 function persistConfig(c: ApiConfig) {
   const { apiKey: _, ...rest } = c; // never persist the key
-  localStorage.setItem("privacyllm_v4", JSON.stringify(rest));
+  localStorage.setItem("privacyllm_v5", JSON.stringify(rest));
 }
 
 // ── Sub-components (inline, small) ────────────────────────────────────────────
@@ -186,20 +185,6 @@ function SettingsDrawer({
                 />
               </div>
 
-              {config.maskingMode === "auto" && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Detection sensitivity: {config.scoreThreshold.toFixed(2)}
-                    <span className="text-gray-400 ml-1">(lower = catches more)</span>
-                  </label>
-                  <input
-                    type="range" min="0.1" max="0.9" step="0.05"
-                    value={config.scoreThreshold}
-                    onChange={e => set("scoreThreshold", parseFloat(e.target.value))}
-                    className="w-full accent-indigo-600"
-                  />
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -382,7 +367,6 @@ export default function App() {
           max_tokens: config.maxTokens,
           masking_mode: config.maskingMode,
           restore_pii_in_response: config.restorePiiInResponse,
-          score_threshold: config.scoreThreshold,
           session_mapping: sessionMappingRef.current,
           custom_masks: customMasks,
         }),

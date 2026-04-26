@@ -38,5 +38,4 @@ export interface ApiConfig {
   maxTokens: number;
   maskingMode: MaskingMode;
   restorePiiInResponse: boolean;
-  scoreThreshold: number;
 }
