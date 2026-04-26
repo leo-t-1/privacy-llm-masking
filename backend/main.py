@@ -6,6 +6,11 @@ from typing import Literal, Optional
 
 MaskingMode = Literal["off", "manual", "auto"]
 
+PRIVACY_SYSTEM_PROMPT = """\
+This conversation passes through a local privacy filter before reaching you. Some words in the user's messages have been replaced with placeholders of the form [TYPE_N] — for example [PERSON_1], [EMAIL_ADDRESS_2], [LOCATION_1], [PHONE_NUMBER_1], or [CUSTOM_3]. Each placeholder represents a real value the user has chosen to keep private; the same placeholder always refers to the same underlying value throughout the conversation.
+
+These placeholders are NOT templates for you to fill in. Treat them as ordinary proper nouns: answer the user's question as if the placeholders were the real values, and reuse the same placeholders if you need to refer back to those entities. Do not ask the user to reveal the actual values, do not invent values for them, and do not comment on the masking unless directly asked."""
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -162,13 +167,22 @@ async def chat(req: ChatRequest):
             content = msg.content
         llm_messages.append({"role": msg.role, "content": content})
 
+    # Always tell the model what the placeholders mean when masking is on,
+    # otherwise it treats [PERSON_1] as a fill-in-the-blank template.
+    if masking_active:
+        system_prompt = PRIVACY_SYSTEM_PROMPT
+        if req.system_prompt:
+            system_prompt = f"{PRIVACY_SYSTEM_PROMPT}\n\n{req.system_prompt}"
+    else:
+        system_prompt = req.system_prompt
+
     try:
         raw_response = await chat_completion(
             provider=req.provider,
             api_key=req.api_key,
             model=req.model,
             messages=llm_messages,
-            system_prompt=req.system_prompt,
+            system_prompt=system_prompt,
             temperature=req.temperature,
             max_tokens=req.max_tokens,
         )
