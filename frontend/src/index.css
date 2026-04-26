@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Smooth textarea resize */
+textarea {
+  resize: none;
+}
+
+/* Entity badge color map */
+.entity-PERSON        { @apply bg-blue-100 text-blue-800 border-blue-200; }
+.entity-EMAIL_ADDRESS { @apply bg-green-100 text-green-800 border-green-200; }
+.entity-PHONE_NUMBER  { @apply bg-yellow-100 text-yellow-800 border-yellow-200; }
+.entity-CREDIT_CARD   { @apply bg-red-100 text-red-800 border-red-200; }
+.entity-US_SSN        { @apply bg-red-100 text-red-800 border-red-200; }
+.entity-LOCATION      { @apply bg-purple-100 text-purple-800 border-purple-200; }
+.entity-DATE_TIME     { @apply bg-orange-100 text-orange-800 border-orange-200; }
+.entity-IP_ADDRESS    { @apply bg-gray-100 text-gray-800 border-gray-200; }
+.entity-URL           { @apply bg-indigo-100 text-indigo-800 border-indigo-200; }
+.entity-default       { @apply bg-slate-100 text-slate-800 border-slate-200; }

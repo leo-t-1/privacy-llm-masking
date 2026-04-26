@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: privacyllm
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: |
+      pip install -r backend/requirements.txt &&
+      python -m spacy download en_core_web_lg &&
+      cd frontend && npm install && npm run build
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    rootDir: .
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
