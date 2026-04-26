@@ -25,7 +25,7 @@ function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function loadConfig(): ApiConfig {
   try {
-    const raw = localStorage.getItem("privacyllm_v3");
+    const raw = localStorage.getItem("privacyllm_v4");
     if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
   } catch {}
   return DEFAULT_CONFIG;
@@ -33,7 +33,7 @@ function loadConfig(): ApiConfig {
 
 function persistConfig(c: ApiConfig) {
   const { apiKey: _, ...rest } = c; // never persist the key
-  localStorage.setItem("privacyllm_v3", JSON.stringify(rest));
+  localStorage.setItem("privacyllm_v4", JSON.stringify(rest));
 }
 
 // ── Sub-components (inline, small) ────────────────────────────────────────────
@@ -77,10 +77,9 @@ function NativeSelect({
 // ── Settings Drawer ───────────────────────────────────────────────────────────
 
 function SettingsDrawer({
-  config, providers, onChange, onClose,
+  config, onChange, onClose,
 }: {
   config: ApiConfig;
-  providers: Record<string, ProviderInfo>;
   onChange: (c: ApiConfig) => void;
   onClose: () => void;
 }) {
@@ -88,35 +87,23 @@ function SettingsDrawer({
     onChange({ ...config, [key]: val });
   }
   const [showKey, setShowKey] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const needsKey = config.provider !== "demo";
 
   return (
     <div className="flex flex-col h-full bg-white border-l border-gray-200">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <span className="font-semibold text-sm text-gray-800">Advanced Settings</span>
+        <span className="font-semibold text-sm text-gray-800">Settings</span>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
           <X size={16} />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-5">
-        {/* System prompt */}
-        <div>
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-            System Prompt
-          </label>
-          <textarea
-            value={config.systemPrompt}
-            onChange={e => set("systemPrompt", e.target.value)}
-            rows={4}
-            placeholder="You are a helpful assistant..."
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-
-        {/* API key (not shown for demo) */}
-        {config.provider !== "demo" && (
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* API key */}
+        {needsKey && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
               API Key
             </label>
             <div className="relative">
@@ -131,59 +118,90 @@ function SettingsDrawer({
                 {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Stored in memory only, never saved or sent to our servers.</p>
+            <p className="text-xs text-gray-400 mt-1.5">Kept in your browser tab only — never written to disk or sent to us.</p>
           </div>
         )}
 
-        {/* PII controls */}
+        {/* Privacy controls */}
         <div className="space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">PII Masking</p>
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Privacy</p>
+          <Toggle
+            on={config.restorePiiInResponse}
+            onToggle={() => set("restorePiiInResponse", !config.restorePiiInResponse)}
+            label="Restore my private info in replies"
+          />
           <p className="text-xs text-gray-500 leading-relaxed">
-            Mode is set in the header.{" "}
-            <span className="font-medium text-gray-700">Auto</span> uses Presidio + spaCy to detect names, emails, and other PII.{" "}
-            <span className="font-medium text-gray-700">Manual</span> only masks the words you mark as private.{" "}
-            <span className="font-medium text-gray-700">Off</span> sends messages unmodified.
+            When on, placeholders like <span className="font-mono">[PERSON_1]</span> in the model's reply
+            are swapped back to your real values before display. The model itself never sees them.
           </p>
-          <Toggle on={config.restorePiiInResponse} onToggle={() => set("restorePiiInResponse", !config.restorePiiInResponse)} label="Restore PII in responses" />
-          {config.maskingMode === "auto" && (
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                Confidence threshold: {config.scoreThreshold.toFixed(2)}
-                <span className="text-gray-400 ml-1">(lower = more aggressive)</span>
-              </label>
-              <input
-                type="range" min="0.1" max="0.9" step="0.05"
-                value={config.scoreThreshold}
-                onChange={e => set("scoreThreshold", parseFloat(e.target.value))}
-                className="w-full accent-indigo-600"
-              />
-            </div>
-          )}
         </div>
 
-        {/* Generation */}
-        <div className="space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Generation</p>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              Temperature: {config.temperature.toFixed(2)}
-            </label>
-            <input
-              type="range" min="0" max="2" step="0.05"
-              value={config.temperature}
-              onChange={e => set("temperature", parseFloat(e.target.value))}
-              className="w-full accent-indigo-600"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Max tokens</label>
-            <input
-              type="number" min="64" max="8192" step="64"
-              value={config.maxTokens}
-              onChange={e => set("maxTokens", parseInt(e.target.value))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
+        {/* Advanced disclosure */}
+        <div className="border-t border-gray-100 pt-4">
+          <button
+            onClick={() => setShowAdvanced(v => !v)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 uppercase tracking-wide"
+          >
+            <ChevronDown size={13} className={`transition-transform ${showAdvanced ? "" : "-rotate-90"}`} />
+            Advanced
+          </button>
+
+          {showAdvanced && (
+            <div className="mt-4 space-y-5">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                  System prompt <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <textarea
+                  value={config.systemPrompt}
+                  onChange={e => set("systemPrompt", e.target.value)}
+                  rows={3}
+                  placeholder="e.g. You are a helpful coding assistant."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Added on top of a built-in instruction that explains the privacy placeholders to the model.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Creativity (temperature): {config.temperature.toFixed(2)}
+                </label>
+                <input
+                  type="range" min="0" max="2" step="0.05"
+                  value={config.temperature}
+                  onChange={e => set("temperature", parseFloat(e.target.value))}
+                  className="w-full accent-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Max reply length (tokens)</label>
+                <input
+                  type="number" min="64" max="8192" step="64"
+                  value={config.maxTokens}
+                  onChange={e => set("maxTokens", parseInt(e.target.value, 10))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {config.maskingMode === "auto" && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Detection sensitivity: {config.scoreThreshold.toFixed(2)}
+                    <span className="text-gray-400 ml-1">(lower = catches more)</span>
+                  </label>
+                  <input
+                    type="range" min="0.1" max="0.9" step="0.05"
+                    value={config.scoreThreshold}
+                    onChange={e => set("scoreThreshold", parseFloat(e.target.value))}
+                    className="w-full accent-indigo-600"
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -254,12 +272,20 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load providers on mount
+  // Load providers on mount, then snap config back to a known provider if
+  // localStorage has something stale from a previous version of the app.
   useEffect(() => {
     fetch("/api/providers")
       .then(r => r.json())
-      .then(setProviders)
+      .then((p: Record<string, ProviderInfo>) => {
+        setProviders(p);
+        if (!p[config.provider]) {
+          const fallback = (Object.keys(p)[0] ?? "demo") as Provider;
+          setConfig(c => ({ ...c, provider: fallback, model: p[fallback]?.default_model ?? c.model }));
+        }
+      })
       .catch(console.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { persistConfig(config); }, [config]);
@@ -659,7 +685,6 @@ export default function App() {
         {showSettings && (
           <SettingsDrawer
             config={config}
-            providers={providers}
             onChange={setConfig}
             onClose={() => setShowSettings(false)}
           />

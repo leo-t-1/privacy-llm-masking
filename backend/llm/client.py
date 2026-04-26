@@ -6,61 +6,17 @@ from openai import AsyncOpenAI
 
 PROVIDERS: dict[str, dict] = {
     "demo": {
-        "label": "Demo (no API key needed)",
+        "label": "Demo (free, no key needed)",
         "base_url": "https://text.pollinations.ai/openai",
-        "models": ["openai", "mistral", "llama"],
+        "models": ["openai", "mistral"],
         "default_model": "openai",
         "no_key_required": True,
-    },
-    "deepseek": {
-        "label": "DeepSeek",
-        "base_url": "https://api.deepseek.com",
-        "models": ["deepseek-chat", "deepseek-reasoner"],
-        "default_model": "deepseek-chat",
     },
     "openai": {
         "label": "OpenAI",
         "base_url": "https://api.openai.com/v1",
-        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+        "models": ["gpt-4o-mini", "gpt-4o"],
         "default_model": "gpt-4o-mini",
-    },
-    "groq": {
-        "label": "Groq (Free)",
-        "base_url": "https://api.groq.com/openai/v1",
-        "models": [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it",
-        ],
-        "default_model": "llama-3.3-70b-versatile",
-    },
-    "together": {
-        "label": "Together AI (Free tier)",
-        "base_url": "https://api.together.xyz/v1",
-        "models": [
-            "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-            "mistralai/Mixtral-8x7B-Instruct-v0.1",
-            "Qwen/Qwen2.5-72B-Instruct-Turbo",
-        ],
-        "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-    },
-    "openrouter": {
-        "label": "OpenRouter (multi-model)",
-        "base_url": "https://openrouter.ai/api/v1",
-        "models": [
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "mistralai/mistral-7b-instruct:free",
-            "google/gemma-3-12b-it:free",
-            "deepseek/deepseek-r1:free",
-        ],
-        "default_model": "meta-llama/llama-3.3-70b-instruct:free",
-    },
-    "mistral": {
-        "label": "Mistral AI",
-        "base_url": "https://api.mistral.ai/v1",
-        "models": ["mistral-large-latest", "mistral-small-latest", "open-mistral-7b"],
-        "default_model": "mistral-small-latest",
     },
 }
 

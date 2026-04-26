@@ -7,6 +7,13 @@ from typing import Optional
 from presidio_analyzer import AnalyzerEngine, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 
+try:
+    from gliner import GLiNER
+    _gliner_import_ok = True
+except Exception:
+    GLiNER = None  # type: ignore
+    _gliner_import_ok = False
+
 
 @dataclass
 class PIIEntity:
@@ -28,6 +35,33 @@ class AnonymizationResult:
 
 
 _analyzer: Optional[AnalyzerEngine] = None
+_gliner: Optional["GLiNER"] = None
+
+# GLiNER handles fuzzy / context-dependent categories; it's much better at
+# telling "Apple" the company from "Apple" the surname than spaCy NER is.
+_GLINER_ENTITIES = {"PERSON", "LOCATION"}
+_GLINER_LABELS = ["person", "location"]
+_GLINER_LABEL_TO_TYPE = {"person": "PERSON", "location": "LOCATION"}
+
+# GLiNER scores pronouns and possessives quite high under the "person" label.
+# We only want named entities, so we apply a stoplist + require at least one
+# uppercase letter, and floor the threshold a little above the Presidio default.
+_GLINER_MIN_THRESHOLD = 0.5
+_PRONOUN_STOPLIST = {
+    "i", "me", "my", "myself", "mine",
+    "you", "your", "yours", "yourself",
+    "he", "him", "his", "himself",
+    "she", "her", "hers", "herself",
+    "it", "its", "itself",
+    "we", "us", "our", "ours", "ourselves",
+    "they", "them", "their", "theirs", "themselves",
+    "this", "that", "these", "those",
+    "who", "whom", "whose", "which", "what",
+    "someone", "anyone", "everyone", "noone", "nobody", "everybody",
+    "mr", "mrs", "ms", "miss", "dr", "sir", "madam",
+    "mom", "dad", "mum", "father", "mother", "husband", "wife",
+    "son", "daughter", "brother", "sister", "uncle", "aunt", "cousin",
+}
 
 
 def _get_analyzer() -> AnalyzerEngine:
@@ -43,7 +77,60 @@ def _get_analyzer() -> AnalyzerEngine:
     return _analyzer
 
 
-# URL removed — too many false positives inside email addresses and prose text
+def _get_gliner():
+    """Lazy-load GLiNER. Returns None if the package failed to import."""
+    global _gliner
+    if not _gliner_import_ok:
+        return None
+    if _gliner is None:
+        _gliner = GLiNER.from_pretrained("urchade/gliner_multi_pii-v1")
+    return _gliner
+
+
+def warmup() -> None:
+    """Eagerly load both models so the first request doesn't pay the cost."""
+    _get_analyzer()
+    _get_gliner()
+
+
+def _gliner_detect(text: str, threshold: float) -> list[RecognizerResult]:
+    """Run GLiNER and return Presidio-shaped RecognizerResult objects."""
+    model = _get_gliner()
+    if model is None:
+        return []
+    effective = max(threshold, _GLINER_MIN_THRESHOLD)
+    raw = model.predict_entities(text, _GLINER_LABELS, threshold=effective)
+    out: list[RecognizerResult] = []
+    for r in raw:
+        entity_type = _GLINER_LABEL_TO_TYPE.get(r["label"].lower())
+        if entity_type is None:
+            continue
+        matched = r["text"].strip()
+        tokens = [t for t in matched.lower().replace("'", " ").split() if t]
+        # Drop matches that are entirely pronouns / titles / kinship words.
+        if tokens and all(t in _PRONOUN_STOPLIST for t in tokens):
+            continue
+        # Drop description-shaped phrases whose head noun is a generic
+        # kinship/relation word ("British husband", "her sister", "the dad").
+        if tokens and tokens[-1] in _PRONOUN_STOPLIST:
+            continue
+        # Require at least one capitalised character — anything entirely
+        # lowercase is almost certainly a description, not a proper noun.
+        if not any(c.isupper() for c in matched):
+            continue
+        out.append(RecognizerResult(
+            entity_type=entity_type,
+            start=r["start"],
+            end=r["end"],
+            score=float(r["score"]),
+        ))
+    return out
+
+
+# Trimmed list — only personal-information categories the user explicitly
+# wants masked. DATE_TIME, NRP, IP_ADDRESS, MEDICAL_LICENSE were dropped
+# because they generate too many false positives ("Tuesday", "American",
+# every IPv4-shaped number) for casual chat.
 DEFAULT_ENTITIES = [
     "PERSON",
     "EMAIL_ADDRESS",
@@ -53,13 +140,9 @@ DEFAULT_ENTITIES = [
     "US_PASSPORT",
     "US_BANK_NUMBER",
     "US_DRIVER_LICENSE",
-    "IP_ADDRESS",
-    "LOCATION",
-    "DATE_TIME",
-    "NRP",
-    "MEDICAL_LICENSE",
     "IBAN_CODE",
     "CRYPTO",
+    "LOCATION",
 ]
 
 
@@ -138,17 +221,33 @@ def detect_and_anonymize(
             anonymized = anonymized[:idx] + placeholder + anonymized[idx + len(phrase):]
             start = idx + len(placeholder)
 
-    # ── Step 2: Presidio auto-detection on the already-partially-masked text ──
-    # In manual-only mode (auto_detect=False) we still re-apply the existing
-    # session mapping below, but we skip the heavy NER + regex sweep.
+    # ── Step 2: hybrid auto-detection on the already-partially-masked text ───
+    # GLiNER handles PERSON / LOCATION (much fewer false positives than spaCy
+    # NER on capitalized-but-not-personal words like "Apple" or "Tuesday").
+    # Presidio handles everything else — its regex + checksum recognizers are
+    # the right tool for emails, phone numbers, credit cards, IBAN, SSN, etc.
+    # In manual-only mode we still re-apply the existing session mapping below,
+    # but we skip the heavy detection sweep.
     if auto_detect:
-        analyzer = _get_analyzer()
-        results: list[RecognizerResult] = analyzer.analyze(
-            text=anonymized,
-            language="en",
-            entities=entities,
-            score_threshold=score_threshold,
-        )
+        results: list[RecognizerResult] = []
+
+        gliner_targets = [e for e in entities if e in _GLINER_ENTITIES]
+        if gliner_targets and _get_gliner() is not None:
+            results.extend(_gliner_detect(anonymized, score_threshold))
+            presidio_targets = [e for e in entities if e not in _GLINER_ENTITIES]
+        else:
+            # GLiNER unavailable — fall back to Presidio (spaCy) for PERSON/LOCATION
+            presidio_targets = list(entities)
+
+        if presidio_targets:
+            analyzer = _get_analyzer()
+            results.extend(analyzer.analyze(
+                text=anonymized,
+                language="en",
+                entities=presidio_targets,
+                score_threshold=score_threshold,
+            ))
+
         results = _filter_overlapping(results)
         results_sorted = sorted(results, key=lambda r: r.start, reverse=True)
     else:

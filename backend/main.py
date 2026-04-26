@@ -18,11 +18,18 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from pii.detector import (
-    detect_and_anonymize, deanonymize, reapply_masking, DEFAULT_ENTITIES,
+    detect_and_anonymize, deanonymize, reapply_masking, warmup as detector_warmup,
+    DEFAULT_ENTITIES,
 )
 from llm.client import chat_completion, PROVIDERS
 
 app = FastAPI(title="PrivacyLLM API", version="2.0.0")
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    # Eagerly load spaCy + GLiNER so the first request doesn't pay model load.
+    detector_warmup()
 
 app.add_middleware(
     CORSMiddleware,

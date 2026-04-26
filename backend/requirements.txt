@@ -11,3 +11,8 @@ pydantic==2.10.3
 pdfplumber==0.11.4
 python-docx==1.1.2
 aiofiles==25.1.0
+# GLiNER for PII-specific NER. Pinned: gliner 0.2.26 needs torch>=2.4 via
+# transformers 5, but torch 2.4+ has no Intel-Mac wheels — older combo works.
+gliner==0.2.13
+transformers<5
+numpy<2

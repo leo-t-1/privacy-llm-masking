@@ -17,7 +17,7 @@ export interface ChatMessage {
   isLoading?: boolean;
 }
 
-export type Provider = "demo" | "deepseek" | "openai" | "groq" | "together" | "openrouter" | "mistral";
+export type Provider = "demo" | "openai";
 
 export type MaskingMode = "off" | "manual" | "auto";
 
