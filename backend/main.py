@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
+
+MaskingMode = Literal["off", "manual", "auto"]
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +35,7 @@ class AnalyzeRequest(BaseModel):
     entities: Optional[list[str]] = None
     score_threshold: float = 0.4
     custom_masks: Optional[list[str]] = None
+    auto_detect: bool = True
 
 
 class AnalyzeResponse(BaseModel):
@@ -55,7 +58,7 @@ class ChatRequest(BaseModel):
     system_prompt: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 2048
-    mask_pii: bool = True
+    masking_mode: MaskingMode = "auto"
     restore_pii_in_response: bool = False
     entities: Optional[list[str]] = None
     score_threshold: float = 0.4
@@ -91,6 +94,7 @@ def analyze_text(req: AnalyzeRequest):
         entities=req.entities,
         score_threshold=req.score_threshold,
         custom_masks=req.custom_masks,
+        auto_detect=req.auto_detect,
     )
     return AnalyzeResponse(
         original_text=result.original_text,
@@ -120,13 +124,15 @@ async def chat(req: ChatRequest):
     new_mapping: dict[str, str] = {}
 
     # ── Mask the current user turn ────────────────────────────────────────────
-    if req.mask_pii and last_message.role == "user":
+    masking_active = req.masking_mode != "off"
+    if masking_active and last_message.role == "user":
         result = detect_and_anonymize(
             text=last_message.content,
             entities=req.entities,
             score_threshold=req.score_threshold,
             custom_masks=req.custom_masks,
             existing_mapping=cumulative_mapping,
+            auto_detect=req.masking_mode == "auto",
         )
         masked_user_message = result.anonymized_text
         new_mapping = result.mapping
@@ -148,9 +154,9 @@ async def chat(req: ChatRequest):
     llm_messages: list[dict] = []
     for i, msg in enumerate(req.messages):
         is_last = i == len(req.messages) - 1
-        if is_last and req.mask_pii:
+        if is_last and masking_active:
             content = masked_user_message
-        elif req.mask_pii and cumulative_mapping:
+        elif masking_active and cumulative_mapping:
             content = reapply_masking(msg.content, cumulative_mapping)
         else:
             content = msg.content

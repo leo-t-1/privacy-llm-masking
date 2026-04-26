@@ -80,6 +80,7 @@ def detect_and_anonymize(
     score_threshold: float = 0.4,
     custom_masks: Optional[list[str]] = None,
     existing_mapping: Optional[dict[str, str]] = None,
+    auto_detect: bool = True,
 ) -> AnonymizationResult:
     """
     Detect PII in text and replace with sequential placeholders.
@@ -87,6 +88,8 @@ def detect_and_anonymize(
     custom_masks: exact strings the user wants redacted regardless of auto-detection.
     existing_mapping: placeholder→original from previous turns, used to assign
     consistent placeholder names for values already seen.
+    auto_detect: when False, skip Presidio analysis — only custom_masks and
+    values already in existing_mapping get masked.
     """
     if session_id is None:
         session_id = str(uuid.uuid4())
@@ -136,15 +139,20 @@ def detect_and_anonymize(
             start = idx + len(placeholder)
 
     # ── Step 2: Presidio auto-detection on the already-partially-masked text ──
-    analyzer = _get_analyzer()
-    results: list[RecognizerResult] = analyzer.analyze(
-        text=anonymized,
-        language="en",
-        entities=entities,
-        score_threshold=score_threshold,
-    )
-    results = _filter_overlapping(results)
-    results_sorted = sorted(results, key=lambda r: r.start, reverse=True)
+    # In manual-only mode (auto_detect=False) we still re-apply the existing
+    # session mapping below, but we skip the heavy NER + regex sweep.
+    if auto_detect:
+        analyzer = _get_analyzer()
+        results: list[RecognizerResult] = analyzer.analyze(
+            text=anonymized,
+            language="en",
+            entities=entities,
+            score_threshold=score_threshold,
+        )
+        results = _filter_overlapping(results)
+        results_sorted = sorted(results, key=lambda r: r.start, reverse=True)
+    else:
+        results_sorted = []
 
     for result in results_sorted:
         original_value = anonymized[result.start: result.end]

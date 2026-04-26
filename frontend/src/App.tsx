@@ -3,7 +3,7 @@ import {
   Shield, ShieldOff, Settings2, Trash2, Send, AlertCircle,
   ChevronDown, X, Plus, Eye, EyeOff, Lock, Paperclip,
 } from "lucide-react";
-import type { ApiConfig, ChatMessage, Provider, ProviderInfo } from "./types";
+import type { ApiConfig, ChatMessage, MaskingMode, Provider, ProviderInfo } from "./types";
 import MessageBubble from "./components/MessageBubble";
 import FileUpload from "./components/FileUpload";
 
@@ -16,7 +16,7 @@ const DEFAULT_CONFIG: ApiConfig = {
   systemPrompt: "",
   temperature: 0.7,
   maxTokens: 2048,
-  maskPii: true,
+  maskingMode: "auto",
   restorePiiInResponse: false,
   scoreThreshold: 0.4,
 };
@@ -25,7 +25,7 @@ function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function loadConfig(): ApiConfig {
   try {
-    const raw = localStorage.getItem("privacyllm_v2");
+    const raw = localStorage.getItem("privacyllm_v3");
     if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
   } catch {}
   return DEFAULT_CONFIG;
@@ -33,7 +33,7 @@ function loadConfig(): ApiConfig {
 
 function persistConfig(c: ApiConfig) {
   const { apiKey: _, ...rest } = c; // never persist the key
-  localStorage.setItem("privacyllm_v2", JSON.stringify(rest));
+  localStorage.setItem("privacyllm_v3", JSON.stringify(rest));
 }
 
 // ── Sub-components (inline, small) ────────────────────────────────────────────
@@ -138,20 +138,27 @@ function SettingsDrawer({
         {/* PII controls */}
         <div className="space-y-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">PII Masking</p>
-          <Toggle on={config.maskPii} onToggle={() => set("maskPii", !config.maskPii)} label="Mask PII before sending" />
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Mode is set in the header.{" "}
+            <span className="font-medium text-gray-700">Auto</span> uses Presidio + spaCy to detect names, emails, and other PII.{" "}
+            <span className="font-medium text-gray-700">Manual</span> only masks the words you mark as private.{" "}
+            <span className="font-medium text-gray-700">Off</span> sends messages unmodified.
+          </p>
           <Toggle on={config.restorePiiInResponse} onToggle={() => set("restorePiiInResponse", !config.restorePiiInResponse)} label="Restore PII in responses" />
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              Confidence threshold: {config.scoreThreshold.toFixed(2)}
-              <span className="text-gray-400 ml-1">(lower = more aggressive)</span>
-            </label>
-            <input
-              type="range" min="0.1" max="0.9" step="0.05"
-              value={config.scoreThreshold}
-              onChange={e => set("scoreThreshold", parseFloat(e.target.value))}
-              className="w-full accent-indigo-600"
-            />
-          </div>
+          {config.maskingMode === "auto" && (
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Confidence threshold: {config.scoreThreshold.toFixed(2)}
+                <span className="text-gray-400 ml-1">(lower = more aggressive)</span>
+              </label>
+              <input
+                type="range" min="0.1" max="0.9" step="0.05"
+                value={config.scoreThreshold}
+                onChange={e => set("scoreThreshold", parseFloat(e.target.value))}
+                className="w-full accent-indigo-600"
+              />
+            </div>
+          )}
         </div>
 
         {/* Generation */}
@@ -347,7 +354,7 @@ export default function App() {
           system_prompt: config.systemPrompt || undefined,
           temperature: config.temperature,
           max_tokens: config.maxTokens,
-          mask_pii: config.maskPii,
+          masking_mode: config.maskingMode,
           restore_pii_in_response: config.restorePiiInResponse,
           score_threshold: config.scoreThreshold,
           session_mapping: sessionMappingRef.current,
@@ -460,18 +467,27 @@ export default function App() {
             </span>
           )}
 
-          {/* Shield toggle */}
-          <button
-            onClick={() => setConfig(c => ({ ...c, maskPii: !c.maskPii }))}
-            title={config.maskPii ? "PII masking ON" : "PII masking OFF"}
-            className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
-              config.maskPii
-                ? "text-indigo-600 bg-indigo-50 hover:bg-indigo-100"
-                : "text-gray-400 hover:bg-gray-100"
-            }`}
-          >
-            {config.maskPii ? <Shield size={16} /> : <ShieldOff size={16} />}
-          </button>
+          {/* Mode segmented control */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs flex-shrink-0">
+            {(["off", "manual", "auto"] as MaskingMode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => setConfig(c => ({ ...c, maskingMode: m }))}
+                title={
+                  m === "off" ? "No masking — sends messages unmodified"
+                  : m === "manual" ? "Only mask words you mark as private"
+                  : "Auto-detect names, emails, phone numbers, etc."
+                }
+                className={`px-2.5 py-1 rounded-md transition-colors capitalize ${
+                  config.maskingMode === m
+                    ? "bg-white shadow-sm font-medium text-indigo-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
 
           {/* Clear */}
           {messages.length > 0 && (
@@ -493,11 +509,17 @@ export default function App() {
           </button>
         </header>
 
-        {/* ── Status bar (when masking is off) ──────────────────────────────── */}
-        {!config.maskPii && (
+        {/* ── Status bar (mode-aware) ───────────────────────────────────────── */}
+        {config.maskingMode === "off" && (
           <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-50 border-b border-amber-200 text-xs text-amber-700">
             <ShieldOff size={12} />
-            PII masking is disabled — messages are sent unmodified.
+            Masking is off — messages are sent unmodified.
+          </div>
+        )}
+        {config.maskingMode === "manual" && (
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-pink-50 border-b border-pink-200 text-xs text-pink-700">
+            <Lock size={12} />
+            Manual mode — only words you mark as private will be masked.
           </div>
         )}
 
@@ -510,19 +532,35 @@ export default function App() {
               </div>
               <div className="max-w-sm">
                 <h2 className="text-xl font-bold text-gray-800 mb-2">Chat without leaking</h2>
-                <p className="text-sm text-gray-500 leading-relaxed">
-                  Names, emails, phone numbers, and other sensitive data are replaced with
-                  placeholders <span className="font-mono text-indigo-600">[PERSON_1]</span> before
-                  anything is sent to the AI provider.
-                </p>
+                {config.maskingMode === "auto" && (
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    Names, emails, phone numbers, and other sensitive data are replaced with
+                    placeholders <span className="font-mono text-indigo-600">[PERSON_1]</span> before
+                    anything is sent to the AI provider.
+                  </p>
+                )}
+                {config.maskingMode === "manual" && (
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    Select any text in the message box and click <span className="font-medium text-pink-600">Mark private</span> —
+                    those exact words become <span className="font-mono text-pink-600">[CUSTOM_1]</span> before being sent.
+                    Nothing else is touched.
+                  </p>
+                )}
+                {config.maskingMode === "off" && (
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    Masking is off. Messages are sent to the AI provider unmodified.
+                  </p>
+                )}
               </div>
-              <div className="flex flex-wrap justify-center gap-2 text-xs">
-                {["PERSON", "EMAIL", "PHONE", "LOCATION", "CREDIT CARD", "SSN"].map(t => (
-                  <span key={t} className="bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-3 py-1 font-medium">
-                    {t}
-                  </span>
-                ))}
-              </div>
+              {config.maskingMode === "auto" && (
+                <div className="flex flex-wrap justify-center gap-2 text-xs">
+                  {["PERSON", "EMAIL", "PHONE", "LOCATION", "CREDIT CARD", "SSN"].map(t => (
+                    <span key={t} className="bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-3 py-1 font-medium">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
               {config.provider === "demo" && (
                 <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                   Running in Demo mode — no API key needed. Select a provider above for a real model.
@@ -552,18 +590,20 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Custom masks bar ──────────────────────────────────────────────────── */}
-        <CustomMaskBar
-          masks={customMasks}
-          onAdd={m => setCustomMasks(prev => prev.includes(m) ? prev : [...prev, m])}
-          onRemove={m => setCustomMasks(prev => prev.filter(x => x !== m))}
-        />
+        {/* ── Custom masks bar (hidden when masking is fully off) ─────────────── */}
+        {config.maskingMode !== "off" && (
+          <CustomMaskBar
+            masks={customMasks}
+            onAdd={m => setCustomMasks(prev => prev.includes(m) ? prev : [...prev, m])}
+            onRemove={m => setCustomMasks(prev => prev.filter(x => x !== m))}
+          />
+        )}
 
         {/* ── Input area ────────────────────────────────────────────────────────── */}
         <div className="px-4 pb-4 pt-2 bg-white border-t border-gray-100">
           <div className="max-w-3xl mx-auto">
             {/* "Mark selection" hint */}
-            {selection && (
+            {selection && config.maskingMode !== "off" && (
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-xs text-gray-400">Selected:</span>
                 <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 max-w-xs truncate">{selection}</span>
@@ -606,9 +646,9 @@ export default function App() {
             </div>
 
             <p className="text-xs text-center text-gray-400 mt-1.5">
-              {config.maskPii
-                ? "PII is detected and masked locally before being sent to the model provider."
-                : "Masking is off — your message is sent as-is."}
+              {config.maskingMode === "auto" && "PII is detected and masked locally before being sent to the model provider."}
+              {config.maskingMode === "manual" && "Only words you mark as private are masked — nothing else is touched."}
+              {config.maskingMode === "off" && "Masking is off — your message is sent as-is."}
             </p>
           </div>
         </div>

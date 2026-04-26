@@ -19,6 +19,8 @@ export interface ChatMessage {
 
 export type Provider = "demo" | "deepseek" | "openai" | "groq" | "together" | "openrouter" | "mistral";
 
+export type MaskingMode = "off" | "manual" | "auto";
+
 export interface ProviderInfo {
   label: string;
   base_url: string;
@@ -34,7 +36,7 @@ export interface ApiConfig {
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
-  maskPii: boolean;
+  maskingMode: MaskingMode;
   restorePiiInResponse: boolean;
   scoreThreshold: number;
 }
