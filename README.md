@@ -97,13 +97,6 @@ This is a **client-side masking** tool, not a privacy guarantee. Read this befor
 - [ ] Self-hosted LLM support via Ollama
 - [ ] Recall benchmarking on a labelled PII corpus (currently no quantitative evaluation; "what's masked" is what Presidio claims, not what's measured)
 
-## AI-assistance disclosure
-
-The backend, frontend, and PII pipeline in this repository were built
-with substantial AI coding assistance (Claude Code, Anthropic). The
-threat-model framing and limitations above are the author's; the
-caveats are real and the recall numbers are not yet measured.
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
